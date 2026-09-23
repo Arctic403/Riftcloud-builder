@@ -1,0 +1,11 @@
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.apk
+*.aab
+*.zip
+.env
+secrets/
+private/
+source/

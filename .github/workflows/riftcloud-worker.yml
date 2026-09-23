@@ -1,0 +1,170 @@
+name: RiftCloud Private Build Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact private RiftCloud branch, tag, or commit to build
+        required: true
+        default: main
+        type: string
+      client_id:
+        description: Optional correlation id copied into private release notes
+        required: false
+        default: ''
+        type: string
+      publish:
+        description: Return verified APK to private RiftCloud as a prerelease
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: riftcloud-private-worker
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SOURCE_SHA: ''
+      CLIENT_ID: ${{ inputs.client_id }}
+      PUBLISH: ${{ inputs.publish }}
+
+    steps:
+      - name: Resolve exact private RiftCloud source
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.RIFTCLOUD_PRIVATE_TOKEN }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" || { echo 'RIFTCLOUD_PRIVATE_TOKEN is required.' >&2; exit 1; }
+          SOURCE_SHA="$(gh api "repos/Arctic403/Mobile-Cloudfare/commits/${SOURCE_REF:-main}" --jq '.sha')"
+          CLIENT_ID="${CLIENT_ID:-manual-${GITHUB_RUN_ID}}"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "CLIENT_ID=$CLIENT_ID" >> "$GITHUB_ENV"
+
+      - name: Check out public builder
+        uses: actions/checkout@v7
+        with:
+          path: worker
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Check out private RiftCloud source
+        uses: actions/checkout@v7
+        with:
+          repository: Arctic403/Mobile-Cloudfare
+          ref: ${{ steps.source.outputs.source_sha }}
+          token: ${{ secrets.RIFTCLOUD_PRIVATE_TOKEN }}
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+          show-progress: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ] && [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          test -x "$SDKMANAGER" || { echo 'sdkmanager is unavailable.' >&2; exit 1; }
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0" >/dev/null
+          echo "$SDK_ROOT/build-tools/36.0.0" >> "$GITHUB_PATH"
+
+      - name: Set up pinned Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+          cache-provider: basic
+          cache-read-only: false
+          cache-cleanup: on-success
+
+      - name: Restore persistent RiftCloud signing identity
+        env:
+          RIFTCLOUD_KEYSTORE_B64: ${{ secrets.RIFTCLOUD_KEYSTORE_B64 }}
+          RIFTCLOUD_KEYSTORE_PASSWORD: ${{ secrets.RIFTCLOUD_KEYSTORE_PASSWORD }}
+          RIFTCLOUD_KEY_ALIAS: ${{ secrets.RIFTCLOUD_KEY_ALIAS }}
+          RIFTCLOUD_KEY_PASSWORD: ${{ secrets.RIFTCLOUD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in RIFTCLOUD_KEYSTORE_B64 RIFTCLOUD_KEYSTORE_PASSWORD RIFTCLOUD_KEY_ALIAS RIFTCLOUD_KEY_PASSWORD; do
+            test -n "${!name:-}" || { echo "$name is required; RiftCloud has no temporary signing fallback." >&2; exit 1; }
+          done
+          printf '%s' "$RIFTCLOUD_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/riftcloud-release.keystore"
+          chmod 600 "$RUNNER_TEMP/riftcloud-release.keystore"
+          keytool -list             -keystore "$RUNNER_TEMP/riftcloud-release.keystore"             -storepass "$RIFTCLOUD_KEYSTORE_PASSWORD"             -alias "$RIFTCLOUD_KEY_ALIAS" >/dev/null 2>&1 || {
+              echo 'RiftCloud signing identity could not be opened.' >&2
+              exit 1
+            }
+          echo "RIFTCLOUD_SIGN_STORE=$RUNNER_TEMP/riftcloud-release.keystore" >> "$GITHUB_ENV"
+          echo "RIFTCLOUD_SIGN_STORE_PASS=$RIFTCLOUD_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "RIFTCLOUD_SIGN_ALIAS=$RIFTCLOUD_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "RIFTCLOUD_SIGN_KEY_PASS=$RIFTCLOUD_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build, sign and verify private RiftCloud source
+        shell: bash
+        run: bash worker/scripts/riftcloud-build.sh source
+
+      - name: Publish verified APK to private RiftCloud prerelease
+        if: ${{ success() && env.PUBLISH == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.RIFTCLOUD_PRIVATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${SOURCE_SHA:0:8}"
+          TAG="riftcloud-worker-${GITHUB_RUN_ID}-${SHORT_SHA}"
+          OUTPUT_DIR="$RUNNER_TEMP/riftcloud-output"
+          test -f "$OUTPUT_DIR/RiftCloud-release.apk" || { echo 'Verified APK missing before publication.' >&2; exit 1; }
+
+          cleanup_partial_release() {
+            gh release delete "$TAG" --repo Arctic403/Mobile-Cloudfare --yes --cleanup-tag >/dev/null 2>&1 || true
+          }
+          trap cleanup_partial_release ERR
+
+          gh release create "$TAG" "$OUTPUT_DIR"/*             --repo Arctic403/Mobile-Cloudfare             --target "$SOURCE_SHA"             --prerelease             --title "RiftCloud worker build ${SHORT_SHA}"             --notes "RiftCloud signed Android release built by public Arctic403/Riftcloud-builder run ${GITHUB_RUN_ID}. Exact private source ${SOURCE_SHA}. Client ${CLIENT_ID}. Private source and detailed build logs are not published by the worker."
+
+          trap - ERR
+
+      - name: Return private failure diagnostics
+        if: ${{ failure() && env.PUBLISH == 'true' && env.SOURCE_SHA != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.RIFTCLOUD_PRIVATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${SOURCE_SHA:0:8}"
+          TAG="riftcloud-worker-failed-${GITHUB_RUN_ID}-${SHORT_SHA}"
+          LOG_DIR="$RUNNER_TEMP/riftcloud-private-logs"
+          mkdir -p "$LOG_DIR"
+          printf 'source_sha=%s\nclient_id=%s\nbuilder_run_id=%s\nbuilder_sha=%s\n'             "$SOURCE_SHA" "$CLIENT_ID" "$GITHUB_RUN_ID" "$GITHUB_SHA"             > "$LOG_DIR/failure-context.txt"
+          FAILURE_ZIP="$RUNNER_TEMP/RiftCloud-worker-failure-${SHORT_SHA}.zip"
+          (cd "$LOG_DIR" && zip -qr "$FAILURE_ZIP" .)
+          gh release create "$TAG" "$FAILURE_ZIP"             --repo Arctic403/Mobile-Cloudfare             --target "$SOURCE_SHA"             --prerelease             --title "RiftCloud worker FAILED ${SHORT_SHA}"             --notes "RiftCloud build failed in public builder run ${GITHUB_RUN_ID}. Detailed diagnostics are attached to this private prerelease."
+
+      - name: Destroy private checkout, signing identity and transient outputs
+        if: ${{ always() }}
+        run: |
+          rm -rf source
+          rm -f "$RUNNER_TEMP/riftcloud-release.keystore"
+          rm -rf "$RUNNER_TEMP/riftcloud-private-logs"
+          rm -rf "$RUNNER_TEMP/riftcloud-output" "$RUNNER_TEMP/riftcloud-verification"
+          echo 'Private RiftCloud checkout, signing identity, outputs and detailed logs removed from the ephemeral runner.'
