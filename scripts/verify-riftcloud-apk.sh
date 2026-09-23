@@ -2,10 +2,8 @@
 set -euo pipefail
 
 APK="${1:?APK path required}"
-SOURCE_DIR="${2:?source directory required}"
 
 test -f "$APK" || { echo "APK missing: $APK" >&2; exit 1; }
-test -f "$SOURCE_DIR/app/build.gradle.kts" || { echo "RiftCloud Gradle metadata missing." >&2; exit 1; }
 
 zipalign -c -p 4 "$APK" >/dev/null
 apksigner verify --verbose --print-certs "$APK" >/dev/null
@@ -15,15 +13,16 @@ if unzip -Z1 "$APK" | grep -Eq '^lib/[^/]+/[^/]+\.so$'; then
   exit 1
 fi
 
-grep -q 'applicationId = "com.riftcloud.app"' "$SOURCE_DIR/app/build.gradle.kts" || {
+BADGING="$(aapt dump badging "$APK")"
+printf '%s\n' "$BADGING" | grep -q "package: name='com.riftcloud.app'" || {
   echo "Unexpected RiftCloud applicationId." >&2
   exit 1
 }
-grep -q 'minSdk = 26' "$SOURCE_DIR/app/build.gradle.kts" || {
+printf '%s\n' "$BADGING" | grep -q "sdkVersion:'26'" || {
   echo "Unexpected RiftCloud minSdk." >&2
   exit 1
 }
-grep -q 'targetSdk = 36' "$SOURCE_DIR/app/build.gradle.kts" || {
+printf '%s\n' "$BADGING" | grep -q "targetSdkVersion:'36'" || {
   echo "Unexpected RiftCloud targetSdk." >&2
   exit 1
 }
@@ -33,4 +32,4 @@ test "$(stat -c '%s' "$APK")" -gt 32768 || {
   exit 1
 }
 
-echo "RiftCloud APK verification passed."
+echo "RiftCloud debug APK verification passed."

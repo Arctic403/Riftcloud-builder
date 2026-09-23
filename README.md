@@ -1,88 +1,100 @@
 # RiftCloud Builder
 
-Public, source-isolated Android build worker for the private RiftCloud application.
+Public Android debug builder for RiftCloud.
 
-This repository contains build orchestration and APK verification only. The RiftCloud application source remains in the private repository:
+This repository intentionally contains only the public build pipeline and verification scripts. The RiftCloud application source lives in:
 
 - `Arctic403/Mobile-Cloudfare`
 
-## Build model
+## Current mode: public debug packs
 
-1. A manual workflow dispatch selects a branch, tag, or commit from the private RiftCloud repository.
-2. The worker resolves that ref to an exact source SHA.
-3. The private source is checked out into the ephemeral GitHub Actions runner with a dedicated repository token.
-4. Gradle compiles an unsigned release APK.
-5. The APK is zip-aligned and signed with RiftCloud's persistent private signing identity.
-6. The signed APK is verified for alignment, signature, package identity, SDK policy, minimum size, and ABI neutrality.
-7. Verified outputs are published back to the private RiftCloud repository as a prerelease.
-8. Private source, detailed logs, generated APKs, and the temporary signing keystore are deleted from the public runner.
+RiftCloud Builder currently produces **debug APKs only**.
 
-The public workflow does not upload the private source as an artifact and the build script redirects detailed Gradle output into the private failure bundle instead of printing it into the public Actions log.
+A manual workflow run:
 
-## Required GitHub Actions secrets
+1. checks out this public builder;
+2. checks out the requested RiftCloud source ref;
+3. records the exact RiftCloud source SHA;
+4. builds `:app:assembleDebug` with Java 17, Android SDK 36 and Gradle 9.5;
+5. verifies the APK signature, alignment, package identity, SDK levels and ABI-neutral policy;
+6. creates a SHA-256 checksum and build metadata;
+7. uploads the debug pack as a GitHub Actions artifact;
+8. when `publish=true`, publishes the same pack as a **public prerelease** in this builder repository;
+9. deletes the source checkout and transient build data from the ephemeral runner.
 
-Configure these secrets in **Arctic403/Riftcloud-builder**:
+## Debug signing limitation
+
+These APKs use Android's normal debug signing.
+
+They are development/test packages and **do not establish a permanent Android update-signing lineage**. A debug APK from one clean GitHub runner is not guaranteed to install as an update over a debug APK produced by another run.
+
+When RiftCloud eventually moves to production/updateable APKs, the builder can be switched back to a permanent signing identity.
+
+No keystore or signing secrets are required in the current debug pipeline.
+
+## Source repository access
+
+While `Arctic403/Mobile-Cloudfare` is public, the builder can run without any repository secret.
+
+When the source repository becomes private, add this GitHub Actions repository secret to **Arctic403/Riftcloud-builder**:
 
 - `RIFTCLOUD_PRIVATE_TOKEN`
-  - GitHub token with read access to the private `Arctic403/Mobile-Cloudfare` repository.
-  - It also needs permission to create prereleases and upload assets back to that private repository.
-- `RIFTCLOUD_KEYSTORE_B64`
-  - Base64 encoding of the permanent RiftCloud Android signing keystore.
-- `RIFTCLOUD_KEYSTORE_PASSWORD`
-  - Password for that keystore.
-- `RIFTCLOUD_KEY_ALIAS`
-  - Alias of the RiftCloud signing key.
-- `RIFTCLOUD_KEY_PASSWORD`
-  - Password for that signing key.
 
-There is deliberately **no temporary/debug signing fallback**. Missing signing secrets fail the build.
+Use a fine-grained GitHub token that can access `Arctic403/Mobile-Cloudfare`.
 
-## Signing identity rule
+The workflow uses the token only when it exists. If the source repository remains public, it uses the normal public checkout path.
 
-The same RiftCloud signing key must be used for every update APK.
+The optional private failure-diagnostics path creates a prerelease in the private source repository, so a token used for that path needs sufficient Contents permission to create/upload release assets. If that behavior is not wanted later, it can be removed and the token can be read-only.
 
-Android update compatibility depends on the package name remaining `com.riftcloud.app`, the APK being signed by the same signing identity, and the new build having a higher `versionCode`.
+Never commit GitHub tokens to this repository.
 
-Back up the keystore and its passwords securely. If the signing identity is lost, later APKs signed by a different key cannot update existing direct-installed RiftCloud builds.
+## Public outputs
 
-Never commit the keystore, its Base64 form, passwords, or private-repository token to this repository.
+Each successful run produces:
 
-## Verified outputs
-
-A successful private prerelease receives:
-
-- `RiftCloud-release.apk`
-- `RiftCloud-release.apk.sha256`
-- `RiftCloud-signing-certificate.txt`
+- `RiftCloud-debug.apk`
+- `RiftCloud-debug.apk.sha256`
 - `RiftCloud-build-info.txt`
+- `RiftCloud-debug-signing-certificate.txt`
 
-The verifier rejects APKs that:
+The same files are uploaded as a 14-day Actions artifact.
 
-- fail `zipalign` verification;
-- fail `apksigner` verification;
-- package native `.so` files, preserving RiftCloud's ABI-neutral 32/64-bit policy;
-- no longer declare `com.riftcloud.app`;
-- change the locked `minSdk 26` or `targetSdk 36`;
-- are suspiciously small.
+When `publish=true`, they are also attached to a public prerelease named from the exact RiftCloud source SHA.
 
-## Failure handling
+## APK verification
 
-Detailed Gradle output is kept out of normal public build output. If a build fails and publication is enabled, diagnostics are zipped and returned to a **private prerelease** on the source repository.
+The verifier rejects a debug APK if it:
 
-The ephemeral runner cleanup step always removes:
+- fails `zipalign` verification;
+- fails `apksigner` verification;
+- contains native `.so` files, preserving RiftCloud's ABI-neutral 32/64-bit Android policy;
+- does not identify as package `com.riftcloud.app`;
+- does not declare `minSdk 26`;
+- does not declare `targetSdk 36`;
+- is suspiciously small.
 
-- the private source checkout;
-- the reconstructed signing keystore;
-- private build logs;
-- transient APK and verification directories.
+## Private-source hygiene
+
+The builder does not publish the RiftCloud source tree as an artifact.
+
+Detailed Gradle output is redirected to the runner's temporary private-log directory instead of being printed into the normal public build log. The cleanup step removes:
+
+- the RiftCloud source checkout;
+- temporary build logs;
+- transient APK/output directories.
+
+If `RIFTCLOUD_PRIVATE_TOKEN` is configured and a build fails after the source SHA is known, the current workflow can return the detailed failure bundle to the private source repository as a prerelease rather than exposing it publicly.
 
 ## Running a build
 
-Open **Actions → RiftCloud Private Build Worker → Run workflow**.
+Open:
 
-Use:
+**Actions → RiftCloud Public Debug Builder → Run workflow**
 
-- `source_ref = main` for the current private main branch, or provide an exact branch/tag/SHA;
-- `publish = true` to return the verified result to the private RiftCloud repository.
+Inputs:
 
-The first successful release signed with the permanent RiftCloud identity establishes the signing lineage that later RiftCloud APK updates must keep.
+- `source_ref`: `main`, another branch, a tag, or a commit SHA;
+- `client_id`: optional correlation text;
+- `publish`: whether to create the public debug prerelease.
+
+For now this is the intended RiftCloud distribution path: **public builder, debug APK packs, no permanent signing key**.
