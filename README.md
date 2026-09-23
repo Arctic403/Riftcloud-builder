@@ -6,11 +6,11 @@ This repository intentionally contains only the public build pipeline and verifi
 
 - `Arctic403/Mobile-Cloudfare`
 
-## Current mode: automatic public debug packs
+## Current mode: automatic public builder with private-source prereleases
 
 RiftCloud Builder currently produces **debug APKs only**.
 
-The builder automatically checks `Arctic403/Mobile-Cloudfare/main` every 5 minutes. It resolves the exact source SHA and skips work when that SHA is already represented by a successful public debug prerelease.
+The builder automatically checks `Arctic403/Mobile-Cloudfare/main` every 5 minutes. It resolves the exact source SHA and skips work when that SHA is already represented by a successful RiftCloud source-repo debug prerelease.
 
 Changes to the builder workflow/scripts also trigger an immediate self-test build, and manual workflow dispatch remains available.
 
@@ -23,7 +23,7 @@ A build run:
 5. verifies the APK signature, alignment, package identity, SDK levels and ABI-neutral policy;
 6. creates a SHA-256 checksum and build metadata;
 7. uploads the debug pack as a GitHub Actions artifact;
-8. when `publish=true`, publishes the same pack as a **public prerelease** in this builder repository;
+8. when `publish=true`, publishes the same pack back to `Arctic403/Mobile-Cloudfare` as a **prerelease**;
 9. deletes the source checkout and transient build data from the ephemeral runner.
 
 ## Debug signing limitation
@@ -63,7 +63,7 @@ Each successful run produces:
 
 The same files are uploaded as a 14-day Actions artifact.
 
-When `publish=true`, they are also attached to a public prerelease named from the exact RiftCloud source SHA.
+When `publish=true`, they are also attached to a prerelease in `Arctic403/Mobile-Cloudfare` named from the exact RiftCloud source SHA.
 
 ## APK verification
 
@@ -101,6 +101,6 @@ Inputs:
 
 - `source_ref`: `main`, another branch, a tag, or a commit SHA;
 - `client_id`: optional correlation text;
-- `publish`: whether to create the public debug prerelease.
+- `publish`: whether to publish the debug prerelease back to the RiftCloud source repository.
 
 For now this is the intended RiftCloud distribution path: **automatic public builder, debug APK packs, no permanent signing key**.

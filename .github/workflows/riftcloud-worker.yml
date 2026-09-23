@@ -22,13 +22,13 @@ on:
         default: ''
         type: string
       publish:
-        description: Publish the verified debug APK as a public prerelease
+        description: Publish the verified debug APK back to the RiftCloud source repo as a prerelease
         required: true
         default: true
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: riftcloud-public-debug-builder
@@ -89,7 +89,7 @@ jobs:
 
       - name: Decide whether this source SHA needs a build
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RIFTCLOUD_PRIVATE_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -100,7 +100,7 @@ jobs:
           fi
 
           EXISTING="$(
-            gh api -X GET "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate               --jq ".[] | select(.body != null and (.body | contains(\"$SOURCE_SHA\"))) | .tag_name"               | head -n 1
+            gh api -X GET "repos/Arctic403/Mobile-Cloudfare/releases?per_page=100" --paginate               --jq ".[] | select(.body != null and (.body | contains(\"$SOURCE_SHA\"))) | .tag_name"               | head -n 1
           )"
 
           if [ -n "$EXISTING" ]; then
@@ -163,10 +163,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish public debug prerelease
+      - name: Publish debug prerelease back to RiftCloud
         if: ${{ success() && env.SHOULD_BUILD == 'true' && env.PUBLISH == 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RIFTCLOUD_PRIVATE_TOKEN }}
         run: |
           set -euo pipefail
           SHORT_SHA="${SOURCE_SHA:0:8}"
@@ -174,11 +174,11 @@ jobs:
           OUTPUT_DIR="$RUNNER_TEMP/riftcloud-output"
 
           cleanup_partial_release() {
-            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag >/dev/null 2>&1 || true
+            gh release delete "$TAG" --repo Arctic403/Mobile-Cloudfare --yes --cleanup-tag >/dev/null 2>&1 || true
           }
           trap cleanup_partial_release ERR
 
-          gh release create "$TAG" "$OUTPUT_DIR"/*             --repo "$GITHUB_REPOSITORY"             --target "$GITHUB_SHA"             --prerelease             --title "RiftCloud debug ${SHORT_SHA}"             --notes "Public RiftCloud debug build from source ${SOURCE_SHA}. Builder run ${GITHUB_RUN_ID}. Client ${CLIENT_ID}. This APK uses Android debug signing and is not a permanent update-signing lineage."
+          gh release create "$TAG" "$OUTPUT_DIR"/*             --repo Arctic403/Mobile-Cloudfare             --target "$SOURCE_SHA"             --prerelease             --title "RiftCloud debug ${SHORT_SHA}"             --notes "Public RiftCloud debug build from source ${SOURCE_SHA}. Builder run ${GITHUB_RUN_ID}. Client ${CLIENT_ID}. This APK uses Android debug signing and is not a permanent update-signing lineage."
 
           trap - ERR
 
