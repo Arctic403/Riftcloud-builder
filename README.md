@@ -6,11 +6,15 @@ This repository intentionally contains only the public build pipeline and verifi
 
 - `Arctic403/Mobile-Cloudfare`
 
-## Current mode: public debug packs
+## Current mode: automatic public debug packs
 
 RiftCloud Builder currently produces **debug APKs only**.
 
-A manual workflow run:
+The builder automatically checks `Arctic403/Mobile-Cloudfare/main` every 5 minutes. It resolves the exact source SHA and skips work when that SHA is already represented by a successful public debug prerelease.
+
+Changes to the builder workflow/scripts also trigger an immediate self-test build, and manual workflow dispatch remains available.
+
+A build run:
 
 1. checks out this public builder;
 2. checks out the requested RiftCloud source ref;
@@ -85,9 +89,11 @@ Detailed Gradle output is redirected to the runner's temporary private-log direc
 
 If `RIFTCLOUD_PRIVATE_TOKEN` is configured and a build fails after the source SHA is known, the current workflow can return the detailed failure bundle to the private source repository as a prerelease rather than exposing it publicly.
 
-## Running a build
+## Automatic and manual builds
 
-Open:
+Normal `main` development requires no manual builder action. The scheduled watcher checks the RiftCloud source SHA every 5 minutes and builds only when it sees a new SHA.
+
+For an explicit rebuild or a non-main ref, open:
 
 **Actions → RiftCloud Public Debug Builder → Run workflow**
 
@@ -97,4 +103,4 @@ Inputs:
 - `client_id`: optional correlation text;
 - `publish`: whether to create the public debug prerelease.
 
-For now this is the intended RiftCloud distribution path: **public builder, debug APK packs, no permanent signing key**.
+For now this is the intended RiftCloud distribution path: **automatic public builder, debug APK packs, no permanent signing key**.
