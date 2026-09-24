@@ -150,19 +150,6 @@ jobs:
         shell: bash
         run: bash worker/scripts/riftcloud-build.sh source
 
-      - name: Upload debug pack artifact
-        if: ${{ env.SHOULD_BUILD == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: RiftCloud-debug-${{ env.SOURCE_SHA }}
-          path: |
-            ${{ runner.temp }}/riftcloud-output/RiftCloud-debug.apk
-            ${{ runner.temp }}/riftcloud-output/RiftCloud-debug.apk.sha256
-            ${{ runner.temp }}/riftcloud-output/RiftCloud-build-info.txt
-            ${{ runner.temp }}/riftcloud-output/RiftCloud-debug-signing-certificate.txt
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Publish debug prerelease back to RiftCloud
         if: ${{ success() && env.SHOULD_BUILD == 'true' && env.PUBLISH == 'true' }}
         env:

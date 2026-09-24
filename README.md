@@ -22,8 +22,7 @@ A build run:
 4. builds `:app:assembleDebug` with Java 17, Android SDK 36 and Gradle 9.5;
 5. verifies the APK signature, alignment, package identity, SDK levels and ABI-neutral policy;
 6. creates a SHA-256 checksum and build metadata;
-7. uploads the debug pack as a GitHub Actions artifact;
-8. when `publish=true`, publishes the same pack back to `Arctic403/Mobile-Cloudfare` as a **prerelease**;
+7. when `publish=true`, publishes the verified debug pack back to `Arctic403/Mobile-Cloudfare` as a **prerelease**;
 9. deletes the source checkout and transient build data from the ephemeral runner.
 
 ## Debug signing limitation
@@ -61,9 +60,7 @@ Each successful run produces:
 - `RiftCloud-build-info.txt`
 - `RiftCloud-debug-signing-certificate.txt`
 
-The same files are uploaded as a 14-day Actions artifact.
-
-When `publish=true`, they are also attached to a prerelease in `Arctic403/Mobile-Cloudfare` named from the exact RiftCloud source SHA.
+When `publish=true`, the build outputs are attached only to a prerelease in `Arctic403/Mobile-Cloudfare` named from the exact RiftCloud source SHA.
 
 ## APK verification
 
@@ -79,7 +76,7 @@ The verifier rejects a debug APK if it:
 
 ## Private-source hygiene
 
-The builder does not publish the RiftCloud source tree as an artifact.
+The public builder does not retain or publish the RiftCloud source tree or APK as a downloadable Actions artifact.
 
 Detailed Gradle output is redirected to the runner's temporary private-log directory instead of being printed into the normal public build log. The cleanup step removes:
 
