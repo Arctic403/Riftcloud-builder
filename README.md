@@ -17,13 +17,14 @@ Changes to the builder workflow/scripts also trigger an immediate self-test buil
 A build run:
 
 1. checks out this public builder;
-2. checks out the requested RiftCloud source ref;
+2. checks out the requested private RiftCloud source ref;
 3. records the exact RiftCloud source SHA;
-4. builds `:app:assembleDebug` with Java 17, Android SDK 36 and Gradle 9.5;
-5. verifies the APK signature, alignment, package identity, SDK levels and ABI-neutral policy;
-6. creates a SHA-256 checksum and build metadata;
-7. when `publish=true`, publishes the verified debug pack back to `Arctic403/Mobile-Cloudfare` as a **prerelease**;
-9. deletes the source checkout and transient build data from the ephemeral runner.
+4. runs `:app:testDebugUnitTest`;
+5. builds `:app:assembleDebug` with Java 17, Android SDK 36 and Gradle 9.5;
+6. verifies the APK signature, alignment, package identity, SDK levels and ABI-neutral policy;
+7. creates a SHA-256 checksum and build metadata;
+8. when `publish=true`, publishes the verified debug pack back to `Arctic403/Mobile-Cloudfare` as a **private-source prerelease**;
+9. deletes the source checkout and transient build/test data from the ephemeral runner.
 
 ## Debug signing limitation
 
@@ -35,23 +36,17 @@ When RiftCloud eventually moves to production/updateable APKs, the builder can b
 
 No keystore or signing secrets are required in the current debug pipeline.
 
-## Source repository access
+## Private source repository access
 
-While `Arctic403/Mobile-Cloudfare` is public, the builder can run without any repository secret.
-
-When the source repository becomes private, add this GitHub Actions repository secret to **Arctic403/Riftcloud-builder**:
+`Arctic403/Mobile-Cloudfare` is the private RiftCloud source repository. The public builder requires this GitHub Actions repository secret:
 
 - `RIFTCLOUD_PRIVATE_TOKEN`
 
-Use a fine-grained GitHub token that can access `Arctic403/Mobile-Cloudfare`.
+Use a fine-grained GitHub token that can read the private source repository and has sufficient Contents permission on `Arctic403/Mobile-Cloudfare` to create/upload the private-source prerelease and optional failure-diagnostics bundle.
 
-The workflow uses the token only when it exists. If the source repository remains public, it uses the normal public checkout path.
+The token is used only inside the ephemeral Actions runner. Never commit GitHub tokens to either repository.
 
-The optional private failure-diagnostics path creates a prerelease in the private source repository, so a token used for that path needs sufficient Contents permission to create/upload release assets. If that behavior is not wanted later, it can be removed and the token can be read-only.
-
-Never commit GitHub tokens to this repository.
-
-## Public outputs
+## Build outputs returned to the private source repository
 
 Each successful run produces:
 
@@ -60,9 +55,11 @@ Each successful run produces:
 - `RiftCloud-build-info.txt`
 - `RiftCloud-debug-signing-certificate.txt`
 
-When `publish=true`, the build outputs are attached only to a prerelease in `Arctic403/Mobile-Cloudfare` named from the exact RiftCloud source SHA.
+When `publish=true`, those generated files are attached only to a prerelease in the private `Arctic403/Mobile-Cloudfare` repository. The public builder does not upload an Actions artifact or create a public GitHub Release.
 
-## APK verification
+## Test and APK verification
+
+Before APK assembly, the builder runs `:app:testDebugUnitTest`. A unit-test failure fails the same private diagnostic gate as a Gradle build failure.
 
 The verifier rejects a debug APK if it:
 
@@ -76,7 +73,7 @@ The verifier rejects a debug APK if it:
 
 ## Private-source hygiene
 
-The public builder does not retain or publish the RiftCloud source tree or APK as a downloadable Actions artifact.
+The public builder does not retain or publish the RiftCloud source tree, unit-test outputs, APK, checksums or signing-certificate report as downloadable Actions artifacts.
 
 Detailed Gradle output is redirected to the runner's temporary private-log directory instead of being printed into the normal public build log. The cleanup step removes:
 
@@ -88,7 +85,7 @@ If `RIFTCLOUD_PRIVATE_TOKEN` is configured and a build fails after the source SH
 
 ## Automatic and manual builds
 
-Normal `main` development requires no manual builder action. The scheduled watcher checks the RiftCloud source SHA every 5 minutes and builds only when it sees a new SHA.
+The workflow is configured with a scheduled watcher that checks the RiftCloud source SHA every 5 minutes and builds only when it sees a new SHA. Manual workflow dispatch remains the authoritative fallback when GitHub scheduling or push triggering is delayed.
 
 For an explicit rebuild or a non-main ref, open:
 

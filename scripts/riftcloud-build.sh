@@ -15,13 +15,13 @@ fail() {
 test -d "$SOURCE_DIR/app" || fail "RiftCloud Android source was not found."
 
 GRADLE_LOG="$LOG_DIR/gradle-debug.log"
-if ! gradle -p "$SOURCE_DIR" :app:assembleDebug --stacktrace >"$GRADLE_LOG" 2>&1; then
+if ! gradle -p "$SOURCE_DIR" :app:testDebugUnitTest :app:assembleDebug --stacktrace >"$GRADLE_LOG" 2>&1; then
   {
-    echo "RiftCloud Gradle debug build failed."
+    echo "RiftCloud unit-test or debug-build gate failed."
     echo
     tail -n 400 "$GRADLE_LOG" || true
   } > "$LOG_DIR/failure-summary.txt"
-  echo "RiftCloud Gradle debug build failed. Detailed diagnostics were retained outside the public log." >&2
+  echo "RiftCloud unit-test or debug-build gate failed. Detailed diagnostics were retained outside the public log." >&2
   exit 1
 fi
 

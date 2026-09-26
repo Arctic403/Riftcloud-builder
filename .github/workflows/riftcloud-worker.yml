@@ -54,24 +54,21 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Check out RiftCloud source with private token
-        if: ${{ env.SOURCE_TOKEN != '' }}
+      - name: Require private source token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SOURCE_TOKEN:-}" ]]; then
+            echo "RIFTCLOUD_PRIVATE_TOKEN is required because Arctic403/Mobile-Cloudfare is private." >&2
+            exit 1
+          fi
+
+      - name: Check out private RiftCloud source
         uses: actions/checkout@v7
         with:
           repository: Arctic403/Mobile-Cloudfare
           ref: ${{ env.SOURCE_REF }}
           token: ${{ env.SOURCE_TOKEN }}
-          path: source
-          persist-credentials: false
-          fetch-depth: 1
-          show-progress: false
-
-      - name: Check out public RiftCloud source
-        if: ${{ env.SOURCE_TOKEN == '' }}
-        uses: actions/checkout@v7
-        with:
-          repository: Arctic403/Mobile-Cloudfare
-          ref: ${{ env.SOURCE_REF }}
           path: source
           persist-credentials: false
           fetch-depth: 1
