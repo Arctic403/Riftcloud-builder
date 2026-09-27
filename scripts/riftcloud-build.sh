@@ -24,7 +24,11 @@ if ! gradle -p "$SOURCE_DIR" :app:testDebugUnitTest --stacktrace >"$TEST_LOG" 2>
   {
     echo "RiftCloud unit-test gate failed."
     echo
-    tail -n 400 "$TEST_LOG" || true
+    echo "=== compiler / test diagnostics ==="
+    grep -E '(^e: |^w: |FAILED$|FAILURE:|error:|Compilation error|Unresolved reference|Type mismatch|No value passed|Too many arguments)' "$TEST_LOG" | head -n 160 || true
+    echo
+    echo "=== log tail ==="
+    tail -n 160 "$TEST_LOG" || true
   } > "$LOG_DIR/failure-summary.txt"
   echo "RiftCloud unit-test gate failed. Detailed diagnostics were retained outside the public log." >&2
   exit 1
@@ -35,7 +39,11 @@ if ! gradle -p "$SOURCE_DIR" :app:assembleDebug --stacktrace >"$BUILD_LOG" 2>&1;
   {
     echo "RiftCloud debug-build gate failed after unit tests passed."
     echo
-    tail -n 400 "$BUILD_LOG" || true
+    echo "=== compiler / build diagnostics ==="
+    grep -E '(^e: |^w: |FAILED$|FAILURE:|error:|Compilation error|Unresolved reference|Type mismatch|No value passed|Too many arguments)' "$BUILD_LOG" | head -n 160 || true
+    echo
+    echo "=== log tail ==="
+    tail -n 160 "$BUILD_LOG" || true
   } > "$LOG_DIR/failure-summary.txt"
   echo "RiftCloud debug-build gate failed. Detailed diagnostics were retained outside the public log." >&2
   exit 1

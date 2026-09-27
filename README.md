@@ -77,7 +77,7 @@ The builder is source-version driven rather than hard-coded to one RiftCloud rel
 
 The public builder does not retain or publish the RiftCloud source tree, unit-test outputs, APK, checksums or signing-certificate report as downloadable Actions artifacts.
 
-Detailed unit-test and build Gradle output are redirected to separate files in the runner's temporary private-log directory instead of being printed into the normal public build log. The cleanup step removes:
+Detailed unit-test and build Gradle output are redirected to separate files in the runner's temporary private-log directory instead of being printed into the normal public build log. Failure summaries extract compiler/test diagnostics first and append a shorter log tail so private failure bundles point at the real source error instead of mostly Gradle stacktrace. The cleanup step removes:
 
 - the RiftCloud source checkout;
 - temporary build logs;
