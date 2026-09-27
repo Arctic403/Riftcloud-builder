@@ -2,6 +2,8 @@
 set -euo pipefail
 
 APK="${1:?APK path required}"
+EXPECTED_VERSION_NAME="${2:?expected versionName required}"
+EXPECTED_VERSION_CODE="${3:?expected versionCode required}"
 
 test -f "$APK" || { echo "APK missing: $APK" >&2; exit 1; }
 
@@ -16,6 +18,14 @@ fi
 BADGING="$(aapt dump badging "$APK")"
 printf '%s\n' "$BADGING" | grep -q "package: name='com.riftcloud.app'" || {
   echo "Unexpected RiftCloud applicationId." >&2
+  exit 1
+}
+printf '%s\n' "$BADGING" | grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" || {
+  echo "Packaged RiftCloud versionCode does not match private source metadata." >&2
+  exit 1
+}
+printf '%s\n' "$BADGING" | grep -Fq "versionName='$EXPECTED_VERSION_NAME'" || {
+  echo "Packaged RiftCloud versionName does not match private source metadata." >&2
   exit 1
 }
 printf '%s\n' "$BADGING" | grep -q "sdkVersion:'26'" || {

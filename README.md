@@ -19,12 +19,13 @@ A build run:
 1. checks out this public builder;
 2. checks out the requested private RiftCloud source ref;
 3. records the exact RiftCloud source SHA;
-4. runs `:app:testDebugUnitTest`;
-5. builds `:app:assembleDebug` with Java 17, Android SDK 36 and Gradle 9.5;
-6. verifies the APK signature, alignment, package identity, SDK levels and ABI-neutral policy;
-7. creates a SHA-256 checksum and build metadata;
-8. when `publish=true`, publishes the verified debug pack back to `Arctic403/Mobile-Cloudfare` as a **private-source prerelease**;
-9. deletes the source checkout and transient build/test data from the ephemeral runner.
+4. resolves `versionName` / `versionCode` from the checked-out private source;
+5. runs `:app:testDebugUnitTest` as a dedicated gate;
+6. builds `:app:assembleDebug` with Java 17, Android SDK 36 and Gradle 9.5 only after tests pass;
+7. verifies APK signature, alignment, package identity, SDK levels, ABI-neutral policy, and that packaged `versionName` / `versionCode` exactly match the private source;
+8. creates a SHA-256 checksum and build metadata recording source SHA/ref, client correlation, source version and passed unit-test gate;
+9. when `publish=true`, publishes the verified debug pack back to `Arctic403/Mobile-Cloudfare` as a **private-source prerelease**;
+10. deletes the source checkout and transient build/test data from the ephemeral runner.
 
 ## Debug signing limitation
 
@@ -59,14 +60,15 @@ When `publish=true`, those generated files are attached only to a prerelease in 
 
 ## Test and APK verification
 
-Before APK assembly, the builder runs `:app:testDebugUnitTest`. A unit-test failure fails the same private diagnostic gate as a Gradle build failure.
+Before APK assembly, the builder runs `:app:testDebugUnitTest` as a separate gate. A unit-test failure stops the run before assembly and is retained only in the private diagnostic path.
 
-The verifier rejects a debug APK if it:
+The builder is source-version driven rather than hard-coded to one RiftCloud release. It reads `versionName` and `versionCode` from the exact private source checkout, then the verifier rejects a debug APK if it:
 
 - fails `zipalign` verification;
 - fails `apksigner` verification;
 - contains native `.so` files, preserving RiftCloud's ABI-neutral 32/64-bit Android policy;
 - does not identify as package `com.riftcloud.app`;
+- packages a `versionName` or `versionCode` that differs from the checked-out private source;
 - does not declare `minSdk 26`;
 - does not declare `targetSdk 36`;
 - is suspiciously small.
@@ -75,7 +77,7 @@ The verifier rejects a debug APK if it:
 
 The public builder does not retain or publish the RiftCloud source tree, unit-test outputs, APK, checksums or signing-certificate report as downloadable Actions artifacts.
 
-Detailed Gradle output is redirected to the runner's temporary private-log directory instead of being printed into the normal public build log. The cleanup step removes:
+Detailed unit-test and build Gradle output are redirected to separate files in the runner's temporary private-log directory instead of being printed into the normal public build log. The cleanup step removes:
 
 - the RiftCloud source checkout;
 - temporary build logs;

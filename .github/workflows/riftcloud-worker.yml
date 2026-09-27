@@ -142,7 +142,7 @@ jobs:
           cache-read-only: false
           cache-cleanup: on-success
 
-      - name: Build and verify RiftCloud debug APK
+      - name: Test, build and verify RiftCloud debug APK
         if: ${{ env.SHOULD_BUILD == 'true' }}
         shell: bash
         run: bash worker/scripts/riftcloud-build.sh source
@@ -162,7 +162,7 @@ jobs:
           }
           trap cleanup_partial_release ERR
 
-          gh release create "$TAG" "$OUTPUT_DIR"/*             --repo Arctic403/Mobile-Cloudfare             --target "$SOURCE_SHA"             --prerelease             --title "RiftCloud debug ${SHORT_SHA}"             --notes "Public RiftCloud debug build from source ${SOURCE_SHA}. Builder run ${GITHUB_RUN_ID}. Client ${CLIENT_ID}. This APK uses Android debug signing and is not a permanent update-signing lineage."
+          gh release create "$TAG" "$OUTPUT_DIR"/*             --repo Arctic403/Mobile-Cloudfare             --target "$SOURCE_SHA"             --prerelease             --title "RiftCloud debug ${SHORT_SHA}"             --notes "RiftCloud debug build produced by the public builder from private source ${SOURCE_SHA}. Builder run ${GITHUB_RUN_ID}. Client ${CLIENT_ID}. Unit tests, source/APK version identity and APK verification gates passed. This APK uses Android debug signing and is not a permanent update-signing lineage."
 
           trap - ERR
 
